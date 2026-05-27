@@ -42,7 +42,7 @@ func main() {
 
 	pubsub.DeclareAndBind(
 		con,
-		"peril_topic",
+		routing.ExchangePerilDirect,
 		"game_logs",
 		"game_logs.*",
 		"durable",

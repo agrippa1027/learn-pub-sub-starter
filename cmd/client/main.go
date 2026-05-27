@@ -30,29 +30,30 @@ func main() {
 		return
 	}
 
-	_, _, err = pubsub.DeclareAndBind(
-		conn,
-		"peril_direct",
-		fmt.Sprintf("%s.%s", routing.PauseKey, username),
-		routing.PauseKey,
-		"transient",
-	)
-	if err != nil {
-		fmt.Printf("Error declaring and binding queue: %s\n", err)
-		return
-	}
-
 	gameState := gamelogic.NewGameState(username)
+
+	go func() {
+		err = pubsub.SubscribeJSON(
+			conn,
+			routing.ExchangePerilDirect,
+			fmt.Sprintf("%s.%s", routing.PauseKey, username),
+			routing.PauseKey,
+			"transient",
+			handlerPause(gameState),
+		)
+		if err != nil {
+			fmt.Printf("Error subscribing, declaring and binding queue: %s\n", err)
+			return
+		}
+	}()
 
 GAME_LLOOP:
 	for {
 		switch words := gamelogic.GetInput(); words[0] {
-
 		case "spawn":
 			err = gameState.CommandSpawn(words)
 			if err != nil {
 				fmt.Printf("Error processing command: %s\n", err)
-				return
 			}
 			continue GAME_LLOOP
 
@@ -60,7 +61,6 @@ GAME_LLOOP:
 			_, err = gameState.CommandMove(words)
 			if err != nil {
 				fmt.Printf("Error processing command: %s\n", err)
-				return
 			}
 			continue GAME_LLOOP
 
@@ -87,4 +87,12 @@ GAME_LLOOP:
 	}
 
 	util.InterruptHandler()
+}
+
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
+	defer fmt.Print("> ")
+
+	return func(ps routing.PlayingState) {
+		gs.HandlePause(ps)
+	}
 }
