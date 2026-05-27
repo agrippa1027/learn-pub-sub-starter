@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -58,7 +57,7 @@ func DeclareAndBind(
 	}
 
 	ok := channel.QueueBind(
-		uuid.New().String(),
+		queueName,
 		key,
 		exchange,
 		false,
