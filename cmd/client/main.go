@@ -22,7 +22,11 @@ func main() {
 		fmt.Printf("error establishing connection to %s\n", err)
 	}
 	defer conn.Close()
-	fmt.Printf("connection established successfully to %s\n", connectionURI)
+
+	channel, err := conn.Channel()
+	if err != nil {
+		fmt.Printf("error opening channel %s \n", err)
+	}
 
 	username, err := gamelogic.ClientWelcome()
 	if err != nil {
@@ -47,6 +51,21 @@ func main() {
 		}
 	}()
 
+	go func() {
+		err = pubsub.SubscribeJSON(
+			conn,
+			routing.ExchangePerilTopic,
+			fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, username),
+			fmt.Sprintf("%s.*", routing.ArmyMovesPrefix),
+			"transient",
+			handlerArmyMove(gameState),
+		)
+		if err != nil {
+			fmt.Printf("Error subscribing, declaring and binding queue: %s\n", err)
+			return
+		}
+	}()
+
 GAME_LLOOP:
 	for {
 		switch words := gamelogic.GetInput(); words[0] {
@@ -58,9 +77,19 @@ GAME_LLOOP:
 			continue GAME_LLOOP
 
 		case "move":
-			_, err = gameState.CommandMove(words)
+			am, err := gameState.CommandMove(words)
 			if err != nil {
 				fmt.Printf("Error processing command: %s\n", err)
+			}
+
+			ok := pubsub.PublishJSON(
+				channel,
+				routing.ExchangePerilTopic,
+				fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, username),
+				am,
+			)
+			if ok != nil {
+				fmt.Printf("Message publishing failed with %s\n", ok)
 			}
 			continue GAME_LLOOP
 
@@ -94,5 +123,13 @@ func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
 
 	return func(ps routing.PlayingState) {
 		gs.HandlePause(ps)
+	}
+}
+
+func handlerArmyMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) {
+	defer fmt.Print("> ")
+
+	return func(am gamelogic.ArmyMove) {
+		gs.HandleMove(am)
 	}
 }
